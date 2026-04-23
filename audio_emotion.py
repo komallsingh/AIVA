@@ -21,7 +21,6 @@ def clean_text(text):
     text = re.sub(r"[^a-zA-Z ]", "", text)
     return text
 
-# ---------------- EMOTION PREDICTION ----------------
 def predict_emotion(text):
     text = clean_text(text)
 
@@ -36,9 +35,8 @@ def predict_emotion(text):
     if confidence < 0.5:
         return "neutral"
 
-    return f"{emotion} ({confidence:.2f})"
+    return emotion
 
-# ---------------- IMPROVED SPEECH FUNCTION ----------------
 def listen_and_predict(retries=3):
     recognizer = sr.Recognizer()
 
@@ -51,7 +49,7 @@ def listen_and_predict(retries=3):
             with sr.Microphone() as source:
                 print("🎤 Listening... (attempt", attempt + 1, ")")
 
-                # 🔥 stabilize noise
+                # stabilize noise
                 recognizer.adjust_for_ambient_noise(source, duration=1)
 
                 # prevents hanging forever

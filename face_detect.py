@@ -7,11 +7,8 @@ import threading
 # Import audio emotion module
 from audio_emotion import listen_and_predict
 
-
 gender_model = tf.keras.models.load_model("model/gender_model.keras")
 age_model = tf.keras.models.load_model("model/age_model.keras")
-
-
 
 age_groups = ["Young", "Adult", "Old"]
 age_ranges = ["0-17 yr", "18-39 yr", "40+ yr"]
@@ -20,7 +17,6 @@ age_ranges = ["0-17 yr", "18-39 yr", "40+ yr"]
 face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
-
 
 emotion_text = "Listening..."
 
@@ -83,8 +79,6 @@ while True:
     # ESC key to exit
     if cv2.waitKey(1) & 0xFF == 27:
         break
-
-
 
 cap.release()
 cv2.destroyAllWindows()
