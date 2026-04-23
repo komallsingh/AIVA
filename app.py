@@ -22,7 +22,7 @@ face_cascade = cv2.CascadeClassifier(
 
 st.set_page_config(page_title="AIVA Assistant", layout="wide")
 
-st.title("🤖 AIVA - AI Virtual Assistant")
+st.title("🤖 AIVA - AI Image & Voice Analyzer")
 
 # placeholders (IMPORTANT for smooth updates)
 frame_window = st.image([])
@@ -69,7 +69,12 @@ while True:
         break
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+    faces = faces = face_cascade.detectMultiScale(
+    gray,
+    scaleFactor=1.2,
+    minNeighbors=5,
+    minSize=(50, 50)
+)
 
     label_text = "No face detected"
 
