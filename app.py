@@ -2,123 +2,325 @@ import streamlit as st
 import cv2
 import numpy as np
 import tensorflow as tf
-import threading
 import time
-from audio_emotion import listen_and_predict
+
 from response_engine import get_aiva_response
 
-gender_model = tf.keras.models.load_model("model/gender_model.keras")
-age_model = tf.keras.models.load_model("model/age_model.keras")
 
-age_groups = ["Young", "Adult", "Old"]
-age_ranges = ["0-17 yr", "18-39 yr", "40+ yr"]
+# ============================================================
+# PAGE CONFIG
+# ============================================================
 
-face_cascade = cv2.CascadeClassifier(
-    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+st.set_page_config(
+    page_title="AIVA Assistant",
+    page_icon="🤖",
+    layout="wide"
 )
 
-st.set_page_config(page_title="AIVA Assistant", layout="wide")
 
-st.title("🤖 AIVA - AI Image & Voice Analyzer")
+# ============================================================
+# LOAD MODELS
+# ============================================================
 
-# placeholders (IMPORTANT for smooth updates)
-frame_window = st.image([])
-info_box = st.empty()
-emotion_box = st.empty()
-response_box = st.empty()
+@st.cache_resource
+def load_models():
+    gender_model = tf.keras.models.load_model(
+        "model/gender_model.keras",
+        compile=False
+    )
 
-emotion_text = "Listening..."
-aiva_response = "Waiting..."
-running = True
+    age_model = tf.keras.models.load_model(
+        "model/age_model.keras",
+        compile=False
+    )
 
-def audio_loop():
-    global emotion_text, aiva_response
-
-    while running:
-        try:
-            emotion_text = listen_and_predict()
-            aiva_response = get_aiva_response(emotion_text)
-        except:
-            emotion_text = "Audio error"
-            aiva_response = "..."
-
-        time.sleep(2)  # prevents CPU overload
+    return gender_model, age_model
 
 
-threading.Thread(target=audio_loop, daemon=True).start()
-
-
-
-cap = cv2.VideoCapture(0)
-
-if not cap.isOpened():
-    st.error("Camera not accessible")
+try:
+    gender_model, age_model = load_models()
+except Exception as e:
+    st.error("❌ Failed to load AI models.")
+    st.exception(e)
     st.stop()
 
 
-while True:
+# ============================================================
+# AGE LABELS
+# ============================================================
 
-    ret, frame = cap.read()
-    if not ret:
-        st.warning("Camera frame not received")
-        break
+age_groups = [
+    "Young",
+    "Adult",
+    "Old"
+]
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    faces = faces = face_cascade.detectMultiScale(
-    gray,
-    scaleFactor=1.2,
-    minNeighbors=5,
-    minSize=(50, 50)
+age_ranges = [
+    "0-17 yr",
+    "18-39 yr",
+    "40+ yr"
+]
+
+
+# ============================================================
+# FACE DETECTOR
+# ============================================================
+
+face_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades +
+    "haarcascade_frontalface_default.xml"
 )
 
-    label_text = "No face detected"
+
+# ============================================================
+# HEADER
+# ============================================================
+
+st.title("🤖 AIVA - AI Image & Voice Analyzer")
+
+st.write(
+    "Use your browser camera below to allow AIVA to analyze the image."
+)
+
+
+# ============================================================
+# CAMERA
+# ============================================================
+
+camera_image = st.camera_input(
+    "📷 Take a photo"
+)
+
+
+# ============================================================
+# ANALYZE CAMERA IMAGE
+# ============================================================
+
+label_text = "No face detected"
+
+if camera_image is not None:
+
+    # Read uploaded camera image
+    image_bytes = camera_image.getvalue()
+
+    np_array = np.frombuffer(
+        image_bytes,
+        np.uint8
+    )
+
+    frame = cv2.imdecode(
+        np_array,
+        cv2.IMREAD_COLOR
+    )
+
+    if frame is None:
+        st.error("❌ Could not read camera image.")
+        st.stop()
+
+    # --------------------------------------------------------
+    # Convert to grayscale
+    # --------------------------------------------------------
+
+    gray = cv2.cvtColor(
+        frame,
+        cv2.COLOR_BGR2GRAY
+    )
+
+    # --------------------------------------------------------
+    # Detect faces
+    # --------------------------------------------------------
+
+    faces = face_cascade.detectMultiScale(
+        gray,
+        scaleFactor=1.2,
+        minNeighbors=5,
+        minSize=(50, 50)
+    )
+
+    # --------------------------------------------------------
+    # Analyze faces
+    # --------------------------------------------------------
 
     for (x, y, w, h) in faces:
-        face = frame[y:y+h, x:x+w]
-        face = cv2.resize(face, (64, 64))
-        face = face / 255.0
-        face = np.reshape(face, (1, 64, 64, 3))
 
-        # Gender
-        gender_pred = gender_model.predict(face, verbose=0)
-        gender = "Female" if gender_pred[0][0] > 0.5 else "Male"
+        # Crop face
+        face = frame[
+            y:y + h,
+            x:x + w
+        ]
 
-        # Age
-        age_pred = age_model.predict(face, verbose=0)
-        age_class = np.argmax(age_pred)
+        if face.size == 0:
+            continue
+
+        # Resize to model input
+        face = cv2.resize(
+            face,
+            (64, 64)
+        )
+
+        # Normalize
+        face = face.astype(np.float32) / 255.0
+
+        # Add batch dimension
+        face = np.expand_dims(
+            face,
+            axis=0
+        )
+
+        # ----------------------------------------------------
+        # Gender prediction
+        # ----------------------------------------------------
+
+        gender_pred = gender_model.predict(
+            face,
+            verbose=0
+        )
+
+        gender_score = float(
+            np.asarray(gender_pred).reshape(-1)[0]
+        )
+
+        gender = (
+            "Female"
+            if gender_score > 0.5
+            else "Male"
+        )
+
+        # ----------------------------------------------------
+        # Age prediction
+        # ----------------------------------------------------
+
+        age_pred = age_model.predict(
+            face,
+            verbose=0
+        )
+
+        age_pred = np.asarray(age_pred)
+
+        age_class = int(
+            np.argmax(age_pred)
+        )
+
+        # Protect against invalid model output
+        if age_class >= len(age_groups):
+            age_class = 0
 
         age_group = age_groups[age_class]
         age_range = age_ranges[age_class]
 
-        label_text = f"{gender} | {age_group} ({age_range})"
+        # ----------------------------------------------------
+        # Label
+        # ----------------------------------------------------
 
-        # Draw box
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-        cv2.putText(frame, label_text, (x, y-10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                    (0, 255, 0), 2)
+        label_text = (
+            f"{gender} | "
+            f"{age_group} "
+            f"({age_range})"
+        )
 
-    # Convert BGR → RGB (Streamlit requirement)
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # ----------------------------------------------------
+        # Draw face box
+        # ----------------------------------------------------
 
-    frame_window.image(frame, channels="RGB")
+        cv2.rectangle(
+            frame,
+            (x, y),
+            (x + w, y + h),
+            (0, 255, 0),
+            2
+        )
 
-    info_box.markdown(f"""
+        # Make sure text doesn't go outside image
+        text_y = max(
+            y - 10,
+            25
+        )
+
+        cv2.putText(
+            frame,
+            label_text,
+            (x, text_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (0, 255, 0),
+            2
+        )
+
+
+    # ========================================================
+    # DISPLAY RESULT
+    # ========================================================
+
+    frame_rgb = cv2.cvtColor(
+        frame,
+        cv2.COLOR_BGR2RGB
+    )
+
+    st.image(
+        frame_rgb,
+        caption="AIVA Camera Analysis",
+        use_container_width=True
+    )
+
+
+# ============================================================
+# DETECTION INFO
+# ============================================================
+
+st.markdown("---")
+
+info_box = st.empty()
+
+info_box.markdown(
+    f"""
     ### 🧑 Detection
-    - **Gender/Age:** {label_text}
-    """)
 
-    emotion_box.markdown(f"""
+    **Gender / Age:** {label_text}
+    """
+)
+
+
+# ============================================================
+# VOICE SECTION
+# ============================================================
+
+st.markdown("---")
+
+st.subheader("🎤 Voice Emotion")
+
+st.info(
+    "Browser microphone access cannot be handled by PyAudio "
+    "running on the Render server. Use a browser audio component "
+    "for live microphone input."
+)
+
+
+# ============================================================
+# AIVA RESPONSE
+# ============================================================
+
+emotion_text = "Waiting for voice input..."
+
+try:
+    aiva_response = get_aiva_response(
+        emotion_text
+    )
+except Exception:
+    aiva_response = "Waiting for voice input..."
+
+
+st.markdown(
+    f"""
     ### 🎤 Voice Emotion
+
     **{emotion_text}**
-    """)
+    """
+)
 
-    response_box.markdown(f"""
+st.markdown(
+    f"""
     ### 🤖 AIVA Response
+
     **{aiva_response}**
-    """)
-
-    time.sleep(0.03)  # smooth UI
-
-# cleanup
-cap.release()
+    """
+)
