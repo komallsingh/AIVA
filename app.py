@@ -2,7 +2,7 @@ import streamlit as st
 import cv2
 import numpy as np
 import tensorflow as tf
-import time
+import keras
 
 from response_engine import get_aiva_response
 
@@ -19,29 +19,44 @@ st.set_page_config(
 
 
 # ============================================================
-# LOAD MODELS
+# MODEL LOADING
 # ============================================================
 
 @st.cache_resource
 def load_models():
-    gender_model = tf.keras.models.load_model(
+
+    gender_model = keras.models.load_model(
         "model/gender_model.keras",
-        compile=False
+        compile=False,
+        safe_mode=False
     )
 
-    age_model = tf.keras.models.load_model(
+    age_model = keras.models.load_model(
         "model/age_model.keras",
-        compile=False
+        compile=False,
+        safe_mode=False
     )
 
     return gender_model, age_model
 
 
+# ============================================================
+# LOAD AI MODELS
+# ============================================================
+
 try:
+
     gender_model, age_model = load_models()
+
 except Exception as e:
+
     st.error("❌ Failed to load AI models.")
-    st.exception(e)
+
+    st.code(
+        str(e),
+        language="text"
+    )
+
     st.stop()
 
 
@@ -71,6 +86,12 @@ face_cascade = cv2.CascadeClassifier(
     "haarcascade_frontalface_default.xml"
 )
 
+if face_cascade.empty():
+
+    st.error("❌ OpenCV face detector could not be loaded.")
+
+    st.stop()
+
 
 # ============================================================
 # HEADER
@@ -93,14 +114,22 @@ camera_image = st.camera_input(
 
 
 # ============================================================
-# ANALYZE CAMERA IMAGE
+# DEFAULT RESULT
 # ============================================================
 
 label_text = "No face detected"
 
+
+# ============================================================
+# CAMERA ANALYSIS
+# ============================================================
+
 if camera_image is not None:
 
-    # Read uploaded camera image
+    # --------------------------------------------------------
+    # Read image
+    # --------------------------------------------------------
+
     image_bytes = camera_image.getvalue()
 
     np_array = np.frombuffer(
@@ -114,17 +143,21 @@ if camera_image is not None:
     )
 
     if frame is None:
+
         st.error("❌ Could not read camera image.")
+
         st.stop()
 
+
     # --------------------------------------------------------
-    # Convert to grayscale
+    # Grayscale
     # --------------------------------------------------------
 
     gray = cv2.cvtColor(
         frame,
         cv2.COLOR_BGR2GRAY
     )
+
 
     # --------------------------------------------------------
     # Detect faces
@@ -137,13 +170,22 @@ if camera_image is not None:
         minSize=(50, 50)
     )
 
+
+    # --------------------------------------------------------
+    # No face
+    # --------------------------------------------------------
+
+    if len(faces) == 0:
+
+        label_text = "No face detected"
+
+
     # --------------------------------------------------------
     # Analyze faces
     # --------------------------------------------------------
 
     for (x, y, w, h) in faces:
 
-        # Crop face
         face = frame[
             y:y + h,
             x:x + w
@@ -152,24 +194,39 @@ if camera_image is not None:
         if face.size == 0:
             continue
 
-        # Resize to model input
+
+        # ----------------------------------------------------
+        # Resize
+        # ----------------------------------------------------
+
         face = cv2.resize(
             face,
             (64, 64)
         )
 
-        # Normalize
-        face = face.astype(np.float32) / 255.0
 
-        # Add batch dimension
+        # ----------------------------------------------------
+        # Normalize
+        # ----------------------------------------------------
+
+        face = face.astype(
+            np.float32
+        ) / 255.0
+
+
+        # ----------------------------------------------------
+        # Batch dimension
+        # ----------------------------------------------------
+
         face = np.expand_dims(
             face,
             axis=0
         )
 
-        # ----------------------------------------------------
-        # Gender prediction
-        # ----------------------------------------------------
+
+        # ====================================================
+        # GENDER
+        # ====================================================
 
         gender_pred = gender_model.predict(
             face,
@@ -177,8 +234,11 @@ if camera_image is not None:
         )
 
         gender_score = float(
-            np.asarray(gender_pred).reshape(-1)[0]
+            np.asarray(
+                gender_pred
+            ).reshape(-1)[0]
         )
+
 
         gender = (
             "Female"
@@ -186,31 +246,44 @@ if camera_image is not None:
             else "Male"
         )
 
-        # ----------------------------------------------------
-        # Age prediction
-        # ----------------------------------------------------
+
+        # ====================================================
+        # AGE
+        # ====================================================
 
         age_pred = age_model.predict(
             face,
             verbose=0
         )
 
-        age_pred = np.asarray(age_pred)
+        age_pred = np.asarray(
+            age_pred
+        )
+
 
         age_class = int(
             np.argmax(age_pred)
         )
 
-        # Protect against invalid model output
-        if age_class >= len(age_groups):
+
+        # Protect against unexpected output
+        if age_class < 0 or age_class >= len(age_groups):
+
             age_class = 0
 
-        age_group = age_groups[age_class]
-        age_range = age_ranges[age_class]
 
-        # ----------------------------------------------------
-        # Label
-        # ----------------------------------------------------
+        age_group = age_groups[
+            age_class
+        ]
+
+        age_range = age_ranges[
+            age_class
+        ]
+
+
+        # ====================================================
+        # RESULT LABEL
+        # ====================================================
 
         label_text = (
             f"{gender} | "
@@ -218,9 +291,10 @@ if camera_image is not None:
             f"({age_range})"
         )
 
-        # ----------------------------------------------------
-        # Draw face box
-        # ----------------------------------------------------
+
+        # ====================================================
+        # DRAW FACE BOX
+        # ====================================================
 
         cv2.rectangle(
             frame,
@@ -230,11 +304,16 @@ if camera_image is not None:
             2
         )
 
-        # Make sure text doesn't go outside image
+
+        # ----------------------------------------------------
+        # Text position
+        # ----------------------------------------------------
+
         text_y = max(
             y - 10,
             25
         )
+
 
         cv2.putText(
             frame,
@@ -248,13 +327,14 @@ if camera_image is not None:
 
 
     # ========================================================
-    # DISPLAY RESULT
+    # DISPLAY IMAGE
     # ========================================================
 
     frame_rgb = cv2.cvtColor(
         frame,
         cv2.COLOR_BGR2RGB
     )
+
 
     st.image(
         frame_rgb,
@@ -264,24 +344,20 @@ if camera_image is not None:
 
 
 # ============================================================
-# DETECTION INFO
+# DETECTION INFORMATION
 # ============================================================
 
 st.markdown("---")
 
-info_box = st.empty()
+st.subheader("🧑 Detection")
 
-info_box.markdown(
-    f"""
-    ### 🧑 Detection
-
-    **Gender / Age:** {label_text}
-    """
+st.write(
+    f"**Gender / Age:** {label_text}"
 )
 
 
 # ============================================================
-# VOICE SECTION
+# VOICE
 # ============================================================
 
 st.markdown("---")
@@ -289,9 +365,8 @@ st.markdown("---")
 st.subheader("🎤 Voice Emotion")
 
 st.info(
-    "Browser microphone access cannot be handled by PyAudio "
-    "running on the Render server. Use a browser audio component "
-    "for live microphone input."
+    "Browser microphone input will be connected separately. "
+    "The Render server cannot directly access your computer's microphone."
 )
 
 
@@ -301,12 +376,18 @@ st.info(
 
 emotion_text = "Waiting for voice input..."
 
+
 try:
+
     aiva_response = get_aiva_response(
         emotion_text
     )
+
 except Exception:
-    aiva_response = "Waiting for voice input..."
+
+    aiva_response = (
+        "Waiting for voice input..."
+    )
 
 
 st.markdown(
@@ -316,6 +397,7 @@ st.markdown(
     **{emotion_text}**
     """
 )
+
 
 st.markdown(
     f"""
