@@ -13,7 +13,6 @@ age_model = tf.keras.models.load_model("model/age_model.keras")
 age_groups = ["Young", "Adult", "Old"]
 age_ranges = ["0-17 yr", "18-39 yr", "40+ yr"]
 
-
 face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
@@ -61,8 +60,6 @@ while True:
 
         age_group = age_groups[age_class]
         age_range = age_ranges[age_class]
-
-        
 
         label = f"{gender} | {age_group} ({age_range}) | {emotion_text}"
 

@@ -4,10 +4,8 @@ import numpy as np
 import tensorflow as tf
 import threading
 import time
-
 from audio_emotion import listen_and_predict
 from response_engine import get_aiva_response
-
 
 gender_model = tf.keras.models.load_model("model/gender_model.keras")
 age_model = tf.keras.models.load_model("model/age_model.keras")
@@ -19,7 +17,6 @@ face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
 
-
 st.set_page_config(page_title="AIVA Assistant", layout="wide")
 
 st.title("🤖 AIVA - AI Image & Voice Analyzer")
@@ -30,11 +27,9 @@ info_box = st.empty()
 emotion_box = st.empty()
 response_box = st.empty()
 
-
 emotion_text = "Listening..."
 aiva_response = "Waiting..."
 running = True
-
 
 def audio_loop():
     global emotion_text, aiva_response

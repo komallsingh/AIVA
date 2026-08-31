@@ -1,9 +1,8 @@
-numpy
-pandas
-scikit-learn
-tensorflow
-keras
-pyaudio
-speechrecognition
-opencv
-
+numpy==1.26.4
+pandas==2.2.3
+scikit-learn==1.5.2
+tensorflow==2.18.0
+keras==3.8.0
+SpeechRecognition==3.14.3
+opencv-python-headless==4.10.0.84
+gunicorn==23.0.0
